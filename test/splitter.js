@@ -19,7 +19,7 @@ function before(Splitter,accounts,done)
   Splitter.deployed().then(function (instance) { //deploy it
     splitter = instance;
 
-    return Promise.all(recipient_accounts.map((account) => splitter.recipientBalanceOf.call(account)))
+    return Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
     .then((_recipient_starting_balances) => {
       recipient_starting_balances = _recipient_starting_balances;
       splitter.split(recipient_accounts[0], recipient_accounts[1], { from: sender_account, value: amount_to_send })//register a split
@@ -35,7 +35,7 @@ contract('Splitter', function(accounts) {
   });
 
   it("Should split wei correctly between recipients", done => {
-       Promise.all(recipient_accounts.map((account) => splitter.recipientBalanceOf.call(account)))
+       Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
       .then((updated_balances) => {
         assert.equal(updated_balances[0].toString(10),recipient_starting_balances[0].add(amount_to_send/2).toString(10), "Did not split to first recipient");
         assert.equal(updated_balances[1].toString(10),recipient_starting_balances[1].add(amount_to_send/2).toString(10), "Did not split to second recipient");
@@ -53,13 +53,13 @@ contract('Splitter', function(accounts) {
 
   it("Should allow recipients to withdraw funds", done => {
     var starting_balances;
-    Promise.all(recipient_accounts.map((account) => splitter.recipientBalanceOf.call(account)))
+    Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
     .then((balances_to_withdraw) => {
       assert.equal(balances_to_withdraw[0].toString(10),(amount_to_send/2).toString(10), "Did not split to first recipient");
       assert.equal(balances_to_withdraw[1].toString(10),(amount_to_send/2).toString(10), "Did not split to second recipient");
       Promise.all(recipient_accounts.map((account) => splitter.withdraw({from: account})))
       .then(() => {
-        Promise.all(recipient_accounts.map((account) => splitter.recipientBalanceOf.call(account)))
+        Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
         .then((ending_balances) => {
           assert.equal(ending_balances[0].toString(10),"0", "Did not withdraw to first recipient");
           assert.equal(ending_balances[1].toString(10),"0", "Did not withdraw to second recipient");
