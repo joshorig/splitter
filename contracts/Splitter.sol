@@ -14,17 +14,19 @@ contract Splitter is Terminable {
     event Split(address indexed sender, address indexed firstRecipient, address indexed secondRecipient, uint256 value);
     event Withdrawal(address indexed recipient, uint256 value);
 
-
     function split(address _firstRecipient, address _secondRecipient)
     public
     payable {
-        require(msg.value > 1 && msg.sender.balance >= msg.value); //cannot split 1 wei
         require(msg.sender != _firstRecipient && msg.sender != _secondRecipient);
         require(_firstRecipient != address(0x0) && _secondRecipient != address(0x0));
 
         uint splitAmount = msg.value/2;
         balances[_firstRecipient] = safeAdd(balances[_firstRecipient],splitAmount);
         balances[_secondRecipient] = safeAdd(balances[_secondRecipient],splitAmount);
+        if(splitAmount % 2 == 1)
+        {
+          balances[msg.sender] = safeAdd(balances[msg.sender],splitAmount);
+        }
         Split(msg.sender,_firstRecipient,_secondRecipient,splitAmount);
     }
 
@@ -41,6 +43,10 @@ contract Splitter is Terminable {
 
     function safeAdd(uint a, uint b) internal returns (uint c) {
       assert((c = a + b) >= a);
+    }
+
+    function() {
+      throw;
     }
 
 }
