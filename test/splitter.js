@@ -1,72 +1,74 @@
-var Splitter = artifacts.require("./Splitter.sol");
-
-var splitter;
-var owner_account;
-var sender_account;
-var recipient_accounts;
-var invalid_account;
-var recipient_starting_balances = [];
-var amount_to_send = 50;
-
-function before(Splitter,accounts,done)
-{
-
-  owner_account = accounts[0];
-  sender_account = accounts[4];
-  recipient_accounts = [accounts[1],accounts[2]];
-  invalid_account = accounts[3];
-
-  Splitter.deployed().then(function (instance) { //deploy it
-    splitter = instance;
-
-    return Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
-    .then((_recipient_starting_balances) => {
-      recipient_starting_balances = _recipient_starting_balances;
-      splitter.split(recipient_accounts[0], recipient_accounts[1], { from: sender_account, value: amount_to_send })//register a split
-      .then(() => done());
-    });
-  });
-}
+require('babel-polyfill');
+const BigNumber = require('bignumber.js');
+const utils = require('./helpers/Utils');
+const Splitter = artifacts.require("./Splitter.sol");
 
 contract('Splitter', function(accounts) {
 
-  beforeEach(function (done) {
-    before(Splitter,accounts,done);
+  const amountToSend = 50;
+  const ownerAccount = accounts[0];
+  const senderAccount = accounts[0];
+  const enderAccount = accounts[4];
+  const invalidAccount = accounts[3];
+  const recipientAccounts = [accounts[1],accounts[2]];
+  let splitter;
+  let recipientStartingBalances = [];
+  let updatedBalances = [];
+
+
+  beforeEach(async () => {
+    splitter = await Splitter.deployed();
   });
 
-  it("Should split wei correctly between recipients", done => {
-       Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
-      .then((updated_balances) => {
-        assert.equal(updated_balances[0].toString(10),recipient_starting_balances[0].add(amount_to_send/2).toString(10), "Did not split to first recipient");
-        assert.equal(updated_balances[1].toString(10),recipient_starting_balances[1].add(amount_to_send/2).toString(10), "Did not split to second recipient");
-        done();
-      });
+  it("Should split wei correctly between recipients", async () => {
+
+    recipientStartingBalances[0] = await splitter.balances.call(recipientAccounts[0]);
+    recipientStartingBalances[1] = await splitter.balances.call(recipientAccounts[1]);
+    let txObject = await splitter.split(recipientAccounts[0], recipientAccounts[1], { from: senderAccount, value: amountToSend });
+
+    assert.equal(txObject.logs.length,1,"Did not log LogSplit event");
+    let logEvent = txObject.logs[0];
+    assert.equal(logEvent.event,"LogSplit","Did not LogSplit");
+    assert.equal(logEvent.args.sender,accounts[0],"Did not log sender correctly");
+    assert.equal(logEvent.args.firstRecipient,recipientAccounts[0],"Did not log firstRecipient correctly");
+    assert.equal(logEvent.args.secondRecipient,recipientAccounts[1],"Did not log secondRecipient correctly");
+    assert.equal(logEvent.args.amount.valueOf(),amountToSend/2,"Did not log amount correctly");
+
+
+    updatedBalances[0] = await splitter.balances.call(recipientAccounts[0]);
+    updatedBalances[1] = await splitter.balances.call(recipientAccounts[1]);
+
+    assert.equal(updatedBalances[0].valueOf(),recipientStartingBalances[0].add(amountToSend/2).valueOf(), "Did not split to first recipient");
+    assert.equal(updatedBalances[1].valueOf(),recipientStartingBalances[1].add(amountToSend/2).valueOf(), "Did not split to second recipient");
+
   });
 
-});
+  it("Should allow recipient to withdraw funds", async () => {
 
-contract('Splitter', function(accounts) {
+    recipientStartingBalances[0] = await splitter.balances.call(recipientAccounts[0]);
+    recipientStartingBalances[1] = await splitter.balances.call(recipientAccounts[1]);
+    let txObject = await splitter.withdraw({from: recipientAccounts[0]});
 
-  beforeEach(function (done) {
-    before(Splitter,accounts,done);
+    assert.equal(txObject.logs.length,1,"Did not log LogWithdrawal event");
+    let logEvent = txObject.logs[0];
+    assert.equal(logEvent.event,"LogWithdrawal","Did not LogWithdrawal");
+    assert.equal(logEvent.args.recipient,recipientAccounts[0],"Did not log recipient correctly");
+    assert.equal(logEvent.args.amount.valueOf(),recipientStartingBalances[0].valueOf(),"Did not log amount correctly");
+
+    updatedBalances[0] = await splitter.balances.call(recipientAccounts[0]);
+
+    assert.equal(updatedBalances[0].valueOf(),0, "Did not split to first recipient");
+
   });
 
-  it("Should allow recipients to withdraw funds", done => {
-    var starting_balances;
-    Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
-    .then((balances_to_withdraw) => {
-      assert.equal(balances_to_withdraw[0].toString(10),(amount_to_send/2).toString(10), "Did not split to first recipient");
-      assert.equal(balances_to_withdraw[1].toString(10),(amount_to_send/2).toString(10), "Did not split to second recipient");
-      Promise.all(recipient_accounts.map((account) => splitter.withdraw({from: account})))
-      .then(() => {
-        Promise.all(recipient_accounts.map((account) => splitter.balances.call(account)))
-        .then((ending_balances) => {
-          assert.equal(ending_balances[0].toString(10),"0", "Did not withdraw to first recipient");
-          assert.equal(ending_balances[1].toString(10),"0", "Did not withdraw to second recipient");
-          done();
-        })
-      });
-    });
+  it("Should not allow invalid recipient to withdraw funds", async () => {
+    try {
+     let txObject = await splitter.withdraw({from: invalidAccount});
+     assert.equal(txObject.receipt.gasUsed, utils.exceptionGasToUse, "should have used all the gas");
+    }
+    catch (error){
+      return utils.ensureException(error);
+    }
   });
 
 });
